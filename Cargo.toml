@@ -1,0 +1,13 @@
+[package]
+name = "Engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.28", features = ["full"] }
+async-trait = "0.1.68"
+futures = "0.3"
+rand = "0.8"
+chrono = "0.4"
+rand_chacha = "0.3"
+clap = { version = "3.0", features = ["derive"] }
