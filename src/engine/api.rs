@@ -65,6 +65,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(dead_code)]
     pub fn new(engine_tx: mpsc::Sender<Message>) -> Self {
         Self { engine_tx }
     }

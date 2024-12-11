@@ -85,6 +85,7 @@ pub struct ConcurrentOrderBook {
 }
 
 impl ConcurrentOrderBook {
+    #[allow(dead_code)]
     pub fn new(trading_pair: TradingPair) -> (Self, mpsc::UnboundedReceiver<Trade>) {
         let (trade_tx, trade_rx) = mpsc::unbounded_channel();
 

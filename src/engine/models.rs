@@ -14,6 +14,7 @@ pub struct TradingPair {
 }
 
 impl TradingPair {
+    #[allow(dead_code)]
     pub fn new(base: String, quote: String) -> Self {
         TradingPair { base, quote }
     }
@@ -44,6 +45,7 @@ pub struct Order {
     pub order_type: OrderType,
     pub price: f64,
     pub quantity: f64,
+    #[allow(dead_code)]
     pub timestamp: DateTime<Utc>,
 }
 
@@ -51,7 +53,9 @@ pub struct Order {
 pub struct Trade {
     pub id: u64,
     pub trading_pair: TradingPair,
+    #[allow(dead_code)]
     pub buy_order_id: u64,
+    #[allow(dead_code)]
     pub sell_order_id: u64,
     pub price: f64,
     pub quantity: f64,

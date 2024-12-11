@@ -1,6 +1,5 @@
 mod engine;
 use engine::{api::run_api_server, core::start_engine};
-use tokio;
 
 #[tokio::main]
 async fn main() {
