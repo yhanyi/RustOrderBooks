@@ -62,7 +62,13 @@ pub struct TradeHistoryResponse {
 
 #[derive(Clone)]
 pub struct AppState {
-    engine_tx: mpsc::Sender<Message>,
+    pub engine_tx: mpsc::Sender<Message>,
+}
+
+impl AppState {
+    pub fn new(engine_tx: mpsc::Sender<Message>) -> Self {
+        Self { engine_tx }
+    }
 }
 
 pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
@@ -324,4 +330,14 @@ mod tests {
         assert!(serialized.contains("trading_pair"));
         assert!(serialized.contains("price"));
     }
+}
+
+pub fn create_test_app(state: AppState) -> Router {
+    Router::new()
+        .route("/order", post(place_order))
+        .route("/price/:base/:quote", get(get_price))
+        .route("/orderbook/:base/:quote", get(get_order_book))
+        .route("/trades/:base/:quote", get(get_trade_history))
+        .route("/health", get(health_check))
+        .with_state(state)
 }
