@@ -6,9 +6,15 @@ use std::collections::BTreeMap;
 use tokio::sync::Mutex;
 use tracing::{info, instrument};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct OrderPrice(f64);
 impl Eq for OrderPrice {}
+impl PartialOrd for OrderPrice {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
 impl Ord for OrderPrice {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap_or(Ordering::Equal)
@@ -67,7 +73,7 @@ impl OrderBook for SimpleOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        let mut trades: Vec<Trade> = Vec::new();
+        let trades: Vec<Trade> = Vec::new();
         let mut buy_orders = self.buy_orders.lock().await;
         let mut sell_orders = self.sell_orders.lock().await;
         let mut trades = Vec::new();

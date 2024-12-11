@@ -1,11 +1,19 @@
 use metrics::{register_counter, register_gauge, register_histogram, Counter, Gauge, Histogram};
 
+// TODO: Implement features and remove dead code
+#[allow(dead_code)]
 pub struct EngineMetrics {
     orders_processed: Counter,
     active_orders: Gauge,
     order_processing_duration: Histogram,
     match_processing_duration: Histogram,
     current_price: Gauge,
+}
+
+impl Default for EngineMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EngineMetrics {
