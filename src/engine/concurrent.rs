@@ -44,40 +44,55 @@ impl PriceLevel {
         self.orders.push_back(order);
     }
 
-    fn try_match(&mut self, quantity: f64) -> Option<(Vec<Trade>, f64)> {
-        if self.total_quantity == 0.0 {
+    fn try_match(&mut self, incoming_order: &Order, next_trade_id: u64) -> Option<Trade> {
+        if self.orders.is_empty() {
             return None;
         }
 
-        let mut matched_quantity = 0.0;
-        let trades = Vec::new();
+        let resting_order = self.orders.front_mut()?;
+        let match_quantity = f64::min(incoming_order.quantity, resting_order.quantity);
 
-        while matched_quantity < quantity && !self.orders.is_empty() {
-            let order = self.orders.front_mut().unwrap();
-            let available = order.quantity;
-            let match_qty = (quantity - matched_quantity).min(available);
-
-            matched_quantity += match_qty;
-            self.total_quantity -= match_qty;
-            order.quantity -= match_qty;
-
-            if order.quantity == 0.0 {
-                self.orders.pop_front();
-            }
+        if match_quantity <= 0.0 {
+            return None;
         }
 
-        if matched_quantity > 0.0 {
-            Some((trades, matched_quantity))
-        } else {
-            None
+        // Update the resting order's quantity
+        resting_order.quantity -= match_quantity;
+        self.total_quantity -= match_quantity;
+
+        let resting_order = self.orders.front()?.clone();
+        let match_quantity = f64::min(incoming_order.quantity, resting_order.quantity);
+
+        if match_quantity <= 0.0 {
+            return None;
         }
+
+        // Create trade
+        let trade = Trade {
+            id: next_trade_id,
+            trading_pair: incoming_order.trading_pair.clone(),
+            buy_order_id: if incoming_order.order_type == OrderType::Buy {
+                incoming_order.id
+            } else {
+                resting_order.id
+            },
+            sell_order_id: if incoming_order.order_type == OrderType::Buy {
+                resting_order.id
+            } else {
+                incoming_order.id
+            },
+            price: resting_order.price,
+            quantity: match_quantity,
+            timestamp: chrono::Utc::now(),
+        };
+
+        Some(trade)
     }
 }
 
 #[allow(dead_code)]
 pub struct ConcurrentOrderBook {
     trading_pair: TradingPair,
-    // Use RwLock for the price level maps to allow concurrent reads
     buy_levels: Arc<RwLock<BTreeMap<OrderPrice, Arc<RwLock<PriceLevel>>>>>,
     sell_levels: Arc<RwLock<BTreeMap<OrderPrice, Arc<RwLock<PriceLevel>>>>>,
     trade_tx: mpsc::UnboundedSender<Trade>,
@@ -85,7 +100,6 @@ pub struct ConcurrentOrderBook {
 }
 
 impl ConcurrentOrderBook {
-    #[allow(dead_code)]
     pub fn new(trading_pair: TradingPair) -> (Self, mpsc::UnboundedReceiver<Trade>) {
         let (trade_tx, trade_rx) = mpsc::unbounded_channel();
 
@@ -101,46 +115,46 @@ impl ConcurrentOrderBook {
         )
     }
 
-    async fn process_order(&self, order: Order) -> Vec<Trade> {
+    async fn process_order(&self, mut incoming_order: Order) -> Vec<Trade> {
         let mut trades = Vec::new();
-        let order_price = OrderPrice(order.price);
-
-        let (matching_levels, resting_levels) = match order.order_type {
+        let (matching_levels, resting_levels) = match incoming_order.order_type {
             OrderType::Buy => (&self.sell_levels, &self.buy_levels),
             OrderType::Sell => (&self.buy_levels, &self.sell_levels),
         };
 
-        let mut remaining_qty = order.quantity;
-
+        // Try to match with existing orders
+        let mut matched = false;
         {
             let levels = matching_levels.read();
-            for (&price, level) in levels.iter() {
-                if remaining_qty <= 0.0 {
+            for level in levels.values() {
+                if incoming_order.quantity <= 0.0 {
                     break;
                 }
 
-                if (order.order_type == OrderType::Buy && price.0 <= order.price)
-                    || (order.order_type == OrderType::Sell && price.0 >= order.price)
-                {
-                    let mut level = level.write();
-                    if let Some((mut new_trades, matched_qty)) = level.try_match(remaining_qty) {
-                        remaining_qty -= matched_qty;
-                        trades.append(&mut new_trades);
+                let mut price_level = level.write();
+                while incoming_order.quantity > 0.0 {
+                    let trade_id = self
+                        .next_trade_id
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    match price_level.try_match(&incoming_order, trade_id) {
+                        Some(trade) => {
+                            incoming_order.quantity -= trade.quantity;
+                            trades.push(trade);
+                            matched = true;
+                        }
+                        None => break,
                     }
                 }
             }
         }
 
-        if remaining_qty > 0.0 {
-            let mut remaining_order = order.clone();
-            remaining_order.quantity = remaining_qty;
-
+        // If order wasn't fully matched, add remaining to book
+        if incoming_order.quantity > 0.0 {
             let mut levels = resting_levels.write();
-            let level = levels
-                .entry(order_price)
+            let price_level = levels
+                .entry(OrderPrice(incoming_order.price))
                 .or_insert_with(|| Arc::new(RwLock::new(PriceLevel::new())));
-
-            level.write().add_order(remaining_order);
+            price_level.write().add_order(incoming_order);
         }
 
         trades
@@ -157,7 +171,7 @@ impl OrderBook for ConcurrentOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        Vec::new()
+        Vec::new() // Matching happens immediately in add_order
     }
 
     async fn get_current_price(&self) -> Option<f64> {
@@ -197,7 +211,7 @@ impl OrderBook for ConcurrentOrderBook {
     }
 
     async fn get_trade_history(&self) -> Vec<Trade> {
-        Vec::new()
+        Vec::new() // Trade history is handled through the channel
     }
 
     async fn get_active_orders_count(&self) -> usize {
