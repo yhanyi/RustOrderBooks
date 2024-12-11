@@ -1,5 +1,5 @@
 use crate::engine::api::OrderBookEntry;
-use crate::engine::models::{Order, PriceUpdate, TradingPair};
+use crate::engine::models::{Order, PriceUpdate, Trade, TradingPair};
 use crate::engine::order_book::{OrderBook, SimpleOrderBook};
 use metrics::{register_counter, register_gauge, register_histogram, Counter, Gauge, Histogram};
 use std::collections::HashMap;
@@ -18,6 +18,7 @@ pub enum Message {
         TradingPair,
         mpsc::Sender<(Vec<OrderBookEntry>, Vec<OrderBookEntry>)>,
     ),
+    GetTradeHistory(TradingPair, mpsc::Sender<Vec<Trade>>),
     Shutdown,
 }
 
@@ -116,6 +117,44 @@ impl Engine {
         }
     }
 
+    async fn process_get_trade_history(
+        &mut self,
+        trading_pair: TradingPair,
+        response_tx: mpsc::Sender<Vec<Trade>>,
+    ) {
+        if let Some(order_book) = self.order_books.get(&trading_pair) {
+            let trades = order_book.get_trade_history().await;
+            let _ = response_tx.send(trades).await;
+        } else {
+            let _ = response_tx.send(vec![]).await;
+        }
+    }
+
+    async fn shutdown(&mut self) {
+        info!("Initiating engine shutdown...");
+
+        // Complete any pending matches
+        for (trading_pair, order_book) in &self.order_books {
+            info!("Processing final matches for {:?}", trading_pair);
+            let trades = order_book.match_orders().await;
+            if !trades.is_empty() {
+                info!("Executed {} final trades", trades.len());
+            }
+        }
+
+        // Log final metrics
+        let total_orders: usize = self
+            .order_books
+            .values()
+            .map(|book| futures::executor::block_on(book.get_active_orders_count()))
+            .sum();
+
+        info!(
+            "Engine shutdown complete. Final state: {} active orders",
+            total_orders
+        );
+    }
+
     pub async fn run(&mut self, mut rx: mpsc::Receiver<Message>) {
         info!("Starting engine");
         while let Some(message) = rx.recv().await {
@@ -132,6 +171,10 @@ impl Engine {
                 Message::GetOrderBook(trading_pair, response_tx) => {
                     self.process_get_order_book(trading_pair, response_tx).await;
                 }
+                Message::GetTradeHistory(trading_pair, response_tx) => {
+                    self.process_get_trade_history(trading_pair, response_tx)
+                        .await;
+                }
                 Message::PriceUpdate(update) => {
                     println!("Price update: {:?}", update);
                 }
@@ -145,10 +188,13 @@ impl Engine {
                     self.process_get_price(trading_pair, response_tx).await;
                 }
                 Message::Shutdown => {
+                    info!("Received shutdown signal");
+                    self.shutdown().await;
                     break;
                 }
             }
         }
+        info!("Engine stopped");
     }
 }
 

@@ -47,7 +47,7 @@ pub struct Order {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Trade {
     pub id: u64,
     pub trading_pair: TradingPair,

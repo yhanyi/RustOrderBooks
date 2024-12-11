@@ -45,27 +45,55 @@ pub struct OrderBookResponse {
     timestamp: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TradeResponse {
+    pub id: u64,
+    pub trading_pair: String,
+    pub price: f64,
+    pub quantity: f64,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TradeHistoryResponse {
+    pub trading_pair: String,
+    pub trades: Vec<TradeResponse>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     engine_tx: mpsc::Sender<Message>,
 }
 
 pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
-    let state = AppState { engine_tx };
+    let state = AppState {
+        engine_tx: engine_tx.clone(),
+    };
 
     let app = Router::new()
         .route("/order", post(place_order))
         .route("/price/:base/:quote", get(get_price))
         .route("/health", get(health_check))
+        .route("/trades/:base/:quote", get(get_trade_history))
         .route("/orderbook/:base/:quote", get(get_order_book))
         .with_state(state);
 
     info!("Starting API server on 0.0.0.0:3000");
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let server =
+        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap()).serve(app.into_make_service());
+
+    tokio::select! {
+        _  = server => {
+            info!("Server stopped");
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Shutdown signal received, stopping server...");
+            if let Err(e) = engine_tx.send(Message::Shutdown).await {
+                eprintln!("Failed to send shutdown message: {}", e);
+            }
+        }
+    }
 }
 
 // Handler functions
@@ -214,6 +242,63 @@ async fn get_order_book(
             bids: vec![],
             asks: vec![],
             timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
+    }
+}
+
+async fn get_trade_history(
+    State(state): State<AppState>,
+    Path((base, quote)): Path<(String, String)>,
+) -> Json<TradeHistoryResponse> {
+    info!("Getting trade history for pair: {}/{}", base, quote);
+    let trading_pair = format!("{}/{}", base, quote);
+
+    let trading_pair_parsed = match TradingPair::from_string(&trading_pair) {
+        Ok(pair) => pair,
+        Err(_) => {
+            return Json(TradeHistoryResponse {
+                trading_pair,
+                trades: vec![],
+            });
+        }
+    };
+
+    let (history_tx, mut history_rx) = mpsc::channel(1);
+
+    match state
+        .engine_tx
+        .send(Message::GetTradeHistory(trading_pair_parsed, history_tx))
+        .await
+    {
+        Ok(_) => match history_rx.recv().await {
+            Some(trades) => {
+                let trade_responses: Vec<TradeResponse> = trades
+                    .into_iter()
+                    .map(|trade| TradeResponse {
+                        id: trade.id,
+                        trading_pair: format!(
+                            "{}/{}",
+                            trade.trading_pair.base, trade.trading_pair.quote
+                        ),
+                        price: trade.price,
+                        quantity: trade.quantity,
+                        timestamp: trade.timestamp.to_rfc3339(),
+                    })
+                    .collect();
+
+                Json(TradeHistoryResponse {
+                    trading_pair,
+                    trades: trade_responses,
+                })
+            }
+            None => Json(TradeHistoryResponse {
+                trading_pair,
+                trades: vec![],
+            }),
+        },
+        Err(_) => Json(TradeHistoryResponse {
+            trading_pair,
+            trades: vec![],
         }),
     }
 }

@@ -21,13 +21,16 @@ pub trait OrderBook: Send + Sync {
     async fn match_orders(&self) -> Vec<Trade>;
     async fn get_current_price(&self) -> Option<f64>;
     async fn get_order_book(&self) -> (Vec<OrderBookEntry>, Vec<OrderBookEntry>);
+    async fn get_trade_history(&self) -> Vec<Trade>;
     async fn get_active_orders_count(&self) -> usize;
+    async fn cleanup(&self) {}
 }
 
 pub struct SimpleOrderBook {
     trading_pair: TradingPair,
     buy_orders: Mutex<BTreeMap<OrderPrice, Vec<Order>>>,
     sell_orders: Mutex<BTreeMap<OrderPrice, Vec<Order>>>,
+    trade_history: Mutex<Vec<Trade>>,
 }
 
 impl SimpleOrderBook {
@@ -36,6 +39,7 @@ impl SimpleOrderBook {
             trading_pair,
             buy_orders: Mutex::new(BTreeMap::new()),
             sell_orders: Mutex::new(BTreeMap::new()),
+            trade_history: Mutex::new(Vec::new()),
         }
     }
 }
@@ -63,9 +67,10 @@ impl OrderBook for SimpleOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        let mut trades = Vec::new();
+        let mut trades: Vec<Trade> = Vec::new();
         let mut buy_orders = self.buy_orders.lock().await;
         let mut sell_orders = self.sell_orders.lock().await;
+        let mut trades = Vec::new();
 
         loop {
             let buy_max = buy_orders
@@ -124,7 +129,23 @@ impl OrderBook for SimpleOrderBook {
             }
         }
 
+        let mut history = self.trade_history.lock().await;
+        for trade in &trades {
+            // Use a simple for loop instead of extend/clone
+            history.push(trade.clone());
+        }
+
         trades
+    }
+
+    async fn get_trade_history(&self) -> Vec<Trade> {
+        let history = self.trade_history.lock().await;
+        let mut result = Vec::new();
+        for trade in history.iter() {
+            // Use a simple for loop
+            result.push(trade.clone());
+        }
+        result
     }
 
     async fn get_current_price(&self) -> Option<f64> {
