@@ -1,6 +1,6 @@
 use axum::Router;
 use engine::engine::api::AppState;
-use engine::engine::engine::Message;
+use engine::engine::core::Message;
 use tokio::sync::mpsc;
 
 pub fn create_test_channel() -> mpsc::Sender<Message> {

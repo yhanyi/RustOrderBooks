@@ -1,7 +1,7 @@
 mod engine;
 use engine::{
     api::run_api_server,
-    engine::{start_engine, Message},
+    core::{start_engine, Message},
     models::{Order, OrderType, TradingPair},
 };
 use tokio;

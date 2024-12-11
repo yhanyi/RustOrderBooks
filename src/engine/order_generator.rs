@@ -1,4 +1,4 @@
-use crate::engine::engine::Message;
+use crate::engine::core::Message;
 use crate::engine::models::{Order, OrderType, TradingPair};
 use rand::rngs::StdRng;
 use rand::Rng;

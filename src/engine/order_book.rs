@@ -73,7 +73,8 @@ impl OrderBook for SimpleOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        let trades: Vec<Trade> = Vec::new();
+        // Temporary prefixing with _
+        let _trades: Vec<Trade> = Vec::new();
         let mut buy_orders = self.buy_orders.lock().await;
         let mut sell_orders = self.sell_orders.lock().await;
         let mut trades = Vec::new();

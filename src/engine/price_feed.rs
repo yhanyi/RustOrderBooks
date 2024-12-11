@@ -1,4 +1,4 @@
-use crate::engine::engine::Message;
+use crate::engine::core::Message;
 use crate::engine::models::{PriceUpdate, TradingPair};
 use rand::Rng;
 use rand::SeedableRng;

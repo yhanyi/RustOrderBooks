@@ -1,6 +1,6 @@
 pub mod api;
 pub mod cli;
-pub mod engine;
+pub mod core;
 pub mod engine_metrics;
 pub mod models;
 pub mod order_book;
