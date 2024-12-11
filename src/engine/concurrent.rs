@@ -56,7 +56,6 @@ impl PriceLevel {
             return None;
         }
 
-        // Update the resting order's quantity
         resting_order.quantity -= match_quantity;
         self.total_quantity -= match_quantity;
 
@@ -67,7 +66,6 @@ impl PriceLevel {
             return None;
         }
 
-        // Create trade
         let trade = Trade {
             id: next_trade_id,
             trading_pair: incoming_order.trading_pair.clone(),
@@ -100,6 +98,7 @@ pub struct ConcurrentOrderBook {
 }
 
 impl ConcurrentOrderBook {
+    #[allow(dead_code)]
     pub fn new(trading_pair: TradingPair) -> (Self, mpsc::UnboundedReceiver<Trade>) {
         let (trade_tx, trade_rx) = mpsc::unbounded_channel();
 
@@ -122,8 +121,6 @@ impl ConcurrentOrderBook {
             OrderType::Sell => (&self.buy_levels, &self.sell_levels),
         };
 
-        // Try to match with existing orders
-        let mut matched = false;
         {
             let levels = matching_levels.read();
             for level in levels.values() {
@@ -140,7 +137,6 @@ impl ConcurrentOrderBook {
                         Some(trade) => {
                             incoming_order.quantity -= trade.quantity;
                             trades.push(trade);
-                            matched = true;
                         }
                         None => break,
                     }
@@ -148,7 +144,6 @@ impl ConcurrentOrderBook {
             }
         }
 
-        // If order wasn't fully matched, add remaining to book
         if incoming_order.quantity > 0.0 {
             let mut levels = resting_levels.write();
             let price_level = levels
@@ -171,7 +166,7 @@ impl OrderBook for ConcurrentOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        Vec::new() // Matching happens immediately in add_order
+        Vec::new()
     }
 
     async fn get_current_price(&self) -> Option<f64> {
@@ -211,7 +206,7 @@ impl OrderBook for ConcurrentOrderBook {
     }
 
     async fn get_trade_history(&self) -> Vec<Trade> {
-        Vec::new() // Trade history is handled through the channel
+        Vec::new()
     }
 
     async fn get_active_orders_count(&self) -> usize {

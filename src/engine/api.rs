@@ -338,7 +338,6 @@ mod tests {
     }
 }
 
-// TODO: Fix this
 #[allow(dead_code)]
 pub fn create_test_app(state: AppState) -> Router {
     Router::new()
