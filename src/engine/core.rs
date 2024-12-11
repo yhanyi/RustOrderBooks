@@ -1,18 +1,12 @@
 use crate::engine::api::OrderBookEntry;
-use crate::engine::engine_metrics::EngineMetrics;
-use crate::engine::models::{Order, PriceUpdate, Trade, TradingPair};
+use crate::engine::models::{Order, Trade, TradingPair};
 use crate::engine::order_book::{OrderBook, SimpleOrderBook};
 use std::collections::HashMap;
-use std::sync::Once;
 use tokio::sync::mpsc;
 use tracing::info;
 
-static INIT: Once = Once::new();
-
 pub enum Message {
     NewOrder(Order),
-    PriceUpdate(PriceUpdate),
-    MatchOrders(TradingPair),
     GetPrice(TradingPair, mpsc::Sender<Option<f64>>),
     GetOrderBook(
         TradingPair,
@@ -22,11 +16,8 @@ pub enum Message {
     Shutdown,
 }
 
-// TODO: Implement features and remove dead code
-#[allow(dead_code)]
 pub struct Engine {
     order_books: HashMap<TradingPair, Box<dyn OrderBook>>,
-    metrics: EngineMetrics,
 }
 
 impl Default for Engine {
@@ -37,25 +28,17 @@ impl Default for Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        INIT.call_once(|| {
-            tracing_subscriber::fmt()
-                .with_target(false)
-                .with_thread_ids(true)
-                .with_level(true)
-                .with_file(true)
-                .with_line_number(true)
-                .with_env_filter("info")
-                .init();
-
-            let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-            builder
-                .install()
-                .expect("Failed to install Prometheus recorder.");
-        });
+        tracing_subscriber::fmt()
+            .with_target(false)
+            .with_thread_ids(true)
+            .with_level(true)
+            .with_file(true)
+            .with_line_number(true)
+            .with_env_filter("info")
+            .init();
 
         Engine {
             order_books: HashMap::new(),
-            metrics: EngineMetrics::new(),
         }
     }
 
@@ -80,11 +63,8 @@ impl Engine {
             price
         };
 
-        info!("Attempting to send price {:?} through channel", price);
         if let Err(e) = response_tx.send(price).await {
             eprintln!("Failed to send price response: {}", e);
-        } else {
-            info!("Successfully sent price through channel");
         }
     }
 
@@ -114,31 +94,6 @@ impl Engine {
         }
     }
 
-    async fn shutdown(&mut self) {
-        info!("Initiating engine shutdown...");
-
-        // Complete any pending matches
-        for (trading_pair, order_book) in &self.order_books {
-            info!("Processing final matches for {:?}", trading_pair);
-            let trades = order_book.match_orders().await;
-            if !trades.is_empty() {
-                info!("Executed {} final trades", trades.len());
-            }
-        }
-
-        // Log final metrics
-        let total_orders: usize = self
-            .order_books
-            .values()
-            .map(|book| futures::executor::block_on(book.get_active_orders_count()))
-            .sum();
-
-        info!(
-            "Engine shutdown complete. Final state: {} active orders",
-            total_orders
-        );
-    }
-
     pub async fn run(&mut self, mut rx: mpsc::Receiver<Message>) {
         info!("Starting engine");
         while let Some(message) = rx.recv().await {
@@ -152,6 +107,9 @@ impl Engine {
                         });
                     order_book.add_order(order).await;
                 }
+                Message::GetPrice(trading_pair, response_tx) => {
+                    self.process_get_price(trading_pair, response_tx).await;
+                }
                 Message::GetOrderBook(trading_pair, response_tx) => {
                     self.process_get_order_book(trading_pair, response_tx).await;
                 }
@@ -159,21 +117,8 @@ impl Engine {
                     self.process_get_trade_history(trading_pair, response_tx)
                         .await;
                 }
-                Message::PriceUpdate(update) => {
-                    println!("Price update: {:?}", update);
-                }
-                Message::MatchOrders(trading_pair) => {
-                    if let Some(order_book) = self.order_books.get(&trading_pair) {
-                        let trades = order_book.match_orders().await;
-                        println!("Executed trades for {:?}: {:?}", trading_pair, trades);
-                    }
-                }
-                Message::GetPrice(trading_pair, response_tx) => {
-                    self.process_get_price(trading_pair, response_tx).await;
-                }
                 Message::Shutdown => {
                     info!("Received shutdown signal");
-                    self.shutdown().await;
                     break;
                 }
             }

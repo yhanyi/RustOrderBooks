@@ -57,10 +57,3 @@ pub struct Trade {
     pub quantity: f64,
     pub timestamp: DateTime<Utc>,
 }
-
-#[derive(Debug)]
-pub struct PriceUpdate {
-    pub trading_pair: TradingPair,
-    pub price: f64,
-    pub timestamp: DateTime<Utc>,
-}

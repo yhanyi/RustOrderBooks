@@ -19,7 +19,7 @@ impl Eq for OrderPrice {}
 
 impl PartialOrd for OrderPrice {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other)) // This is the key change - implementing partial_cmp in terms of cmp
+        Some(self.cmp(other))
     }
 }
 
@@ -75,8 +75,6 @@ impl OrderBook for SimpleOrderBook {
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
-        // Temporary prefixing with _
-        let _trades: Vec<Trade> = Vec::new();
         let mut buy_orders = self.buy_orders.lock().await;
         let mut sell_orders = self.sell_orders.lock().await;
         let mut trades = Vec::new();
@@ -140,7 +138,6 @@ impl OrderBook for SimpleOrderBook {
 
         let mut history = self.trade_history.lock().await;
         for trade in &trades {
-            // Use a simple for loop instead of extend/clone
             history.push(trade.clone());
         }
 
@@ -151,7 +148,6 @@ impl OrderBook for SimpleOrderBook {
         let history = self.trade_history.lock().await;
         let mut result = Vec::new();
         for trade in history.iter() {
-            // Use a simple for loop
             result.push(trade.clone());
         }
         result

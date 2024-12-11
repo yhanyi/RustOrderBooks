@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::info;
 
-// API Types
 #[derive(Debug, Deserialize)]
 pub struct PlaceOrderRequest {
     trading_pair: String,
@@ -90,19 +89,25 @@ pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
         axum::Server::bind(&"0.0.0.0:3000".parse().unwrap()).serve(app.into_make_service());
 
     tokio::select! {
-        _  = server => {
+        result = server => {
+            if let Err(e) = result {
+                eprintln!("Server error: {}", e);
+            }
             info!("Server stopped");
+
         }
         _ = tokio::signal::ctrl_c() => {
-            info!("Shutdown signal received, stopping server...");
+            info!("Shutdown signal received, stopping API server.");
             if let Err(e) = engine_tx.send(Message::Shutdown).await {
-                eprintln!("Failed to send shutdown message: {}", e);
+                info!("Engine already shut down: {}", e);
+            } else {
+                info!("Sent shutdown signal to engine");
             }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
 }
 
-// Handler functions
 async fn place_order(
     State(state): State<AppState>,
     Json(request): Json<PlaceOrderRequest>,
@@ -123,7 +128,7 @@ async fn place_order(
     };
 
     let order = Order {
-        id: 0, // Engine will assign ID
+        id: 0,
         trading_pair,
         order_type,
         price: request.price,
@@ -133,7 +138,7 @@ async fn place_order(
 
     if state.engine_tx.send(Message::NewOrder(order)).await.is_ok() {
         Json(PlaceOrderResponse {
-            order_id: 0, // In a real system, we'd return the actual ID
+            order_id: 0,
             status: "accepted".to_string(),
         })
     } else {
@@ -332,6 +337,8 @@ mod tests {
     }
 }
 
+// TODO: Fix this
+#[allow(dead_code)]
 pub fn create_test_app(state: AppState) -> Router {
     Router::new()
         .route("/order", post(place_order))
