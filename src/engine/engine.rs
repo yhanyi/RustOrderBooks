@@ -1,3 +1,4 @@
+use crate::engine::api::OrderBookEntry;
 use crate::engine::models::{Order, PriceUpdate, TradingPair};
 use crate::engine::order_book::{OrderBook, SimpleOrderBook};
 use metrics::{register_counter, register_gauge, register_histogram, Counter, Gauge, Histogram};
@@ -13,6 +14,10 @@ pub enum Message {
     PriceUpdate(PriceUpdate),
     MatchOrders(TradingPair),
     GetPrice(TradingPair, mpsc::Sender<Option<f64>>),
+    GetOrderBook(
+        TradingPair,
+        mpsc::Sender<(Vec<OrderBookEntry>, Vec<OrderBookEntry>)>,
+    ),
     Shutdown,
 }
 
@@ -98,6 +103,19 @@ impl Engine {
         }
     }
 
+    async fn process_get_order_book(
+        &mut self,
+        trading_pair: TradingPair,
+        response_tx: mpsc::Sender<(Vec<OrderBookEntry>, Vec<OrderBookEntry>)>,
+    ) {
+        if let Some(order_book) = self.order_books.get(&trading_pair) {
+            let (bids, asks) = order_book.get_order_book().await;
+            let _ = response_tx.send((bids, asks)).await;
+        } else {
+            let _ = response_tx.send((vec![], vec![])).await;
+        }
+    }
+
     pub async fn run(&mut self, mut rx: mpsc::Receiver<Message>) {
         info!("Starting engine");
         while let Some(message) = rx.recv().await {
@@ -110,6 +128,9 @@ impl Engine {
                             Box::new(SimpleOrderBook::new(order.trading_pair.clone()))
                         });
                     order_book.add_order(order).await;
+                }
+                Message::GetOrderBook(trading_pair, response_tx) => {
+                    self.process_get_order_book(trading_pair, response_tx).await;
                 }
                 Message::PriceUpdate(update) => {
                     println!("Price update: {:?}", update);

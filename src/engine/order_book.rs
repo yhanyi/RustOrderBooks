@@ -1,3 +1,4 @@
+use crate::engine::api::OrderBookEntry;
 use crate::engine::models::{Order, Trade, TradingPair};
 use async_trait::async_trait;
 use std::cmp::Ordering;
@@ -19,6 +20,7 @@ pub trait OrderBook: Send + Sync {
     async fn add_order(&self, order: Order);
     async fn match_orders(&self) -> Vec<Trade>;
     async fn get_current_price(&self) -> Option<f64>;
+    async fn get_order_book(&self) -> (Vec<OrderBookEntry>, Vec<OrderBookEntry>);
     async fn get_active_orders_count(&self) -> usize;
 }
 
@@ -150,6 +152,30 @@ impl OrderBook for SimpleOrderBook {
         };
         info!("Returning price: {:?}", price);
         price
+    }
+
+    async fn get_order_book(&self) -> (Vec<OrderBookEntry>, Vec<OrderBookEntry>) {
+        let buy_orders = self.buy_orders.lock().await;
+        let sell_orders = self.sell_orders.lock().await;
+
+        let bids: Vec<OrderBookEntry> = buy_orders
+            .iter()
+            .rev()
+            .map(|(&OrderPrice(price), orders)| {
+                let quantity: f64 = orders.iter().map(|order| order.quantity).sum();
+                OrderBookEntry { price, quantity }
+            })
+            .collect();
+
+        let asks: Vec<OrderBookEntry> = sell_orders
+            .iter()
+            .map(|(&OrderPrice(price), orders)| {
+                let quantity: f64 = orders.iter().map(|order| order.quantity).sum();
+                OrderBookEntry { price, quantity }
+            })
+            .collect();
+
+        (bids, asks)
     }
 
     async fn get_active_orders_count(&self) -> usize {

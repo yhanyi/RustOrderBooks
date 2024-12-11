@@ -31,6 +31,20 @@ pub struct PriceResponse {
     timestamp: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct OrderBookEntry {
+    pub price: f64,
+    pub quantity: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrderBookResponse {
+    trading_pair: String,
+    bids: Vec<OrderBookEntry>,
+    asks: Vec<OrderBookEntry>,
+    timestamp: String,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     engine_tx: mpsc::Sender<Message>,
@@ -43,6 +57,7 @@ pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
         .route("/order", post(place_order))
         .route("/price/:base/:quote", get(get_price))
         .route("/health", get(health_check))
+        .route("/orderbook/:base/:quote", get(get_order_book))
         .with_state(state);
 
     info!("Starting API server on 0.0.0.0:3000");
@@ -151,6 +166,55 @@ async fn get_price(
                 timestamp: chrono::Utc::now().to_rfc3339(),
             })
         }
+    }
+}
+
+async fn get_order_book(
+    State(state): State<AppState>,
+    Path((base, quote)): Path<(String, String)>,
+) -> Json<OrderBookResponse> {
+    info!("Getting order book for pair: {}/{}", base, quote);
+    let trading_pair = format!("{}/{}", base, quote);
+
+    let trading_pair_parsed = match TradingPair::from_string(&trading_pair) {
+        Ok(pair) => pair,
+        Err(_) => {
+            return Json(OrderBookResponse {
+                trading_pair,
+                bids: vec![],
+                asks: vec![],
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+    };
+
+    let (book_tx, mut book_rx) = mpsc::channel(1);
+
+    match state
+        .engine_tx
+        .send(Message::GetOrderBook(trading_pair_parsed, book_tx))
+        .await
+    {
+        Ok(_) => match book_rx.recv().await {
+            Some((bids, asks)) => Json(OrderBookResponse {
+                trading_pair,
+                bids,
+                asks,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            }),
+            None => Json(OrderBookResponse {
+                trading_pair,
+                bids: vec![],
+                asks: vec![],
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            }),
+        },
+        Err(_) => Json(OrderBookResponse {
+            trading_pair,
+            bids: vec![],
+            asks: vec![],
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }),
     }
 }
 
