@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use tokio::sync::Mutex;
+use tracing::{info, instrument};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct OrderPrice(f64);
@@ -18,6 +19,7 @@ pub trait OrderBook: Send + Sync {
     async fn add_order(&self, order: Order);
     async fn match_orders(&self) -> Vec<Trade>;
     async fn get_current_price(&self) -> Option<f64>;
+    async fn get_active_orders_count(&self) -> usize;
 }
 
 pub struct SimpleOrderBook {
@@ -38,7 +40,9 @@ impl SimpleOrderBook {
 
 #[async_trait]
 impl OrderBook for SimpleOrderBook {
+    #[instrument(skip(self))]
     async fn add_order(&self, order: Order) {
+        let start = std::time::Instant::now();
         let orders = match order.order_type {
             crate::engine::models::OrderType::Buy => &self.buy_orders,
             crate::engine::models::OrderType::Sell => &self.sell_orders,
@@ -49,6 +53,11 @@ impl OrderBook for SimpleOrderBook {
             .entry(OrderPrice(order.price))
             .or_insert_with(Vec::new)
             .push(order);
+
+        info!(
+            duration_ms = ?start.elapsed().as_millis(),
+            "Order added to order book."
+        );
     }
 
     async fn match_orders(&self) -> Vec<Trade> {
@@ -124,5 +133,25 @@ impl OrderBook for SimpleOrderBook {
             (Some(&OrderPrice(bid)), Some(&OrderPrice(ask))) => Some((bid + ask) / 2.0),
             _ => None,
         }
+    }
+
+    async fn get_active_orders_count(&self) -> usize {
+        let buy_count = self
+            .buy_orders
+            .lock()
+            .await
+            .values()
+            .map(|orders| orders.len())
+            .sum::<usize>();
+
+        let sell_count = self
+            .sell_orders
+            .lock()
+            .await
+            .values()
+            .map(|orders| orders.len())
+            .sum::<usize>();
+
+        buy_count + sell_count
     }
 }

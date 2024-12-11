@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use std::io::{self};
 use std::str::FromStr;
 use tokio::sync::mpsc;
+use tracing::{info, span, Level};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -32,6 +33,10 @@ enum Commands {
 }
 
 pub async fn run_cli() {
+    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+    builder
+        .install()
+        .expect("Failed to install Prometheus recorder");
     let cli = Cli::parse();
     let engine_tx = start_engine();
 
@@ -42,6 +47,13 @@ pub async fn run_cli() {
             price,
             quantity,
         } => {
+            info!(
+                pair = ?pair,
+                order_type = ?order_type,
+                price = price,
+                quantity = quantity,
+                "Processing order command"
+            );
             let trading_pair = match TradingPair::from_str(&pair) {
                 Ok(tp) => tp,
                 Err(e) => {
@@ -71,6 +83,8 @@ pub async fn run_cli() {
             }
         }
         Commands::GetPrice { pair } => {
+            let span = span!(Level::INFO, "get_price", pair = ?pair);
+            let _enter = span.enter();
             let trading_pair = match TradingPair::from_str(&pair) {
                 Ok(tp) => tp,
                 Err(e) => {
@@ -94,7 +108,9 @@ pub async fn run_cli() {
             }
         }
         Commands::StartSimulation => {
-            println!("Starting trading simulation. Press Enter to exit.");
+            info!("Starting trading simulation");
+            println!("Trading simulation started. Metrics available on stdout.");
+            println!("Press Enter to exit.");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
         }

@@ -1,13 +1,13 @@
-use tokio::time::{ interval, Duration };
-use rand::Rng;
+use crate::engine::engine::Message;
+use crate::engine::models::{Order, OrderType, TradingPair};
 use rand::rngs::StdRng;
+use rand::Rng;
 use rand::SeedableRng;
-use crate::v3::models::{ Order, OrderType, TradingPair };
-use crate::v3::engine::Message;
+use tokio::time::{interval, Duration};
 
 pub async fn run_order_generator(
     tx: tokio::sync::mpsc::Sender<Message>,
-    trading_pair: TradingPair
+    trading_pair: TradingPair,
 ) {
     let mut interval = interval(Duration::from_millis(100));
     let mut order_id = 0;
@@ -17,7 +17,11 @@ pub async fn run_order_generator(
         interval.tick().await;
 
         order_id += 1;
-        let order_type = if rng.gen_bool(0.5) { OrderType::Buy } else { OrderType::Sell };
+        let order_type = if rng.gen_bool(0.5) {
+            OrderType::Buy
+        } else {
+            OrderType::Sell
+        };
         let price = rng.gen_range(90.0..=110.0);
         let quantity = rng.gen_range(0.1..=10.0);
 

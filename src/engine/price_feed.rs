@@ -1,15 +1,15 @@
-use tokio::time::{ interval, Duration };
+use crate::engine::engine::Message;
+use crate::engine::models::{PriceUpdate, TradingPair};
 use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use crate::v3::models::{ TradingPair, PriceUpdate };
-use crate::v3::engine::Message;
 use tokio::sync::mpsc;
+use tokio::time::{interval, Duration};
 
 pub async fn run_price_feed(
     tx: mpsc::Sender<Message>,
     trading_pair: TradingPair,
-    initial_price: f64
+    initial_price: f64,
 ) {
     let mut interval = interval(Duration::from_secs(1));
     let mut price = initial_price;
