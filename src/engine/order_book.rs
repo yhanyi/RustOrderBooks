@@ -126,13 +126,30 @@ impl OrderBook for SimpleOrderBook {
     }
 
     async fn get_current_price(&self) -> Option<f64> {
+        info!("Getting current price from order book");
         let buy_orders = self.buy_orders.lock().await;
         let sell_orders = self.sell_orders.lock().await;
 
-        match (buy_orders.keys().next_back(), sell_orders.keys().next()) {
-            (Some(&OrderPrice(bid)), Some(&OrderPrice(ask))) => Some((bid + ask) / 2.0),
-            _ => None,
-        }
+        let price = match (buy_orders.keys().next_back(), sell_orders.keys().next()) {
+            (Some(&OrderPrice(bid)), Some(&OrderPrice(ask))) => {
+                info!("Found bid and ask prices");
+                Some((bid + ask) / 2.0)
+            }
+            (Some(&OrderPrice(bid)), None) => {
+                info!("Found only bid price");
+                Some(bid)
+            }
+            (None, Some(&OrderPrice(ask))) => {
+                info!("Found only ask price");
+                Some(ask)
+            }
+            (None, None) => {
+                info!("No orders found, returning default price");
+                Some(50000.0)
+            }
+        };
+        info!("Returning price: {:?}", price);
+        price
     }
 
     async fn get_active_orders_count(&self) -> usize {

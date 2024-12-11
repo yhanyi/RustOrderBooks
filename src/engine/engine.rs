@@ -4,6 +4,7 @@ use metrics::{register_counter, register_gauge, register_histogram, Counter, Gau
 use std::collections::HashMap;
 use std::sync::Once;
 use tokio::sync::mpsc;
+use tracing::info;
 
 static INIT: Once = Once::new();
 
@@ -68,7 +69,37 @@ impl Engine {
         }
     }
 
+    async fn process_get_price(
+        &mut self,
+        trading_pair: TradingPair,
+        response_tx: mpsc::Sender<Option<f64>>,
+    ) {
+        info!("Processing get_price request for {:?}", trading_pair);
+
+        let price = if let Some(order_book) = self.order_books.get(&trading_pair) {
+            info!("Found existing order book");
+            let price = order_book.get_current_price().await;
+            info!("Got price from existing order book: {:?}", price);
+            price
+        } else {
+            info!("Creating new order book");
+            let order_book = SimpleOrderBook::new(trading_pair.clone());
+            let price = order_book.get_current_price().await;
+            info!("Got price from new order book: {:?}", price);
+            self.order_books.insert(trading_pair, Box::new(order_book));
+            price
+        };
+
+        info!("Attempting to send price {:?} through channel", price);
+        if let Err(e) = response_tx.send(price).await {
+            eprintln!("Failed to send price response: {}", e);
+        } else {
+            info!("Successfully sent price through channel");
+        }
+    }
+
     pub async fn run(&mut self, mut rx: mpsc::Receiver<Message>) {
+        info!("Starting engine");
         while let Some(message) = rx.recv().await {
             match message {
                 Message::NewOrder(order) => {
@@ -90,14 +121,7 @@ impl Engine {
                     }
                 }
                 Message::GetPrice(trading_pair, response_tx) => {
-                    let price = if let Some(order_book) = self.order_books.get(&trading_pair) {
-                        order_book.get_current_price().await
-                    } else {
-                        None
-                    };
-                    if let Err(e) = response_tx.send(price).await {
-                        eprintln!("Failed to send price: {:?}", e);
-                    }
+                    self.process_get_price(trading_pair, response_tx).await;
                 }
                 Message::Shutdown => {
                     break;
