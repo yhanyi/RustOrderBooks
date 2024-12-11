@@ -8,16 +8,18 @@ use tracing::{info, instrument};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct OrderPrice(f64);
-impl Eq for OrderPrice {}
-impl PartialOrd for OrderPrice {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-}
 
 impl Ord for OrderPrice {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or(Ordering::Equal)
+        self.0.partial_cmp(&other.0).unwrap_or(Ordering::Equal)
+    }
+}
+
+impl Eq for OrderPrice {}
+
+impl PartialOrd for OrderPrice {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other)) // This is the key change - implementing partial_cmp in terms of cmp
     }
 }
 
