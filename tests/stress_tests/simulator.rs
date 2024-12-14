@@ -19,9 +19,8 @@ pub async fn simulate_market_maker(
     let start = Instant::now();
 
     while start.elapsed() < Duration::from_secs(TEST_DURATION_SECS) {
-        // Generate all random values before any await points
-        let mid_price = 50000.0 + rand::thread_rng().gen_range(-1000.0..1000.0);
-        let spread = rand::thread_rng().gen_range(0.1..2.0);
+        let mid_price = 50000.0;
+        let spread = rand::thread_rng().gen_range(0.1..0.5);
         let buy_quantity = rand::thread_rng().gen_range(0.1..1.0);
         let sell_quantity = rand::thread_rng().gen_range(0.1..1.0);
         let sleep_duration = rand::thread_rng().gen_range(10..50);
@@ -72,10 +71,10 @@ pub async fn simulate_trader(
     for _ in 0..ORDERS_PER_TRADER {
         // Generate all random values before any await points
         let base_price = 50000.0;
-        let price_offset = rand::thread_rng().gen_range(-5000.0..5000.0);
+        let price_offset = rand::thread_rng().gen_range(-0.5..0.5);
         let quantity = rand::thread_rng().gen_range(0.1..2.0);
         let is_buy = rand::thread_rng().gen_bool(0.5);
-        let sleep_duration = rand::thread_rng().gen_range(50..200);
+        let sleep_duration = rand::thread_rng().gen_range(10..50);
 
         let order_type = if is_buy {
             OrderType::Buy

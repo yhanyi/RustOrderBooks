@@ -9,6 +9,8 @@ pub struct TestMetrics {
     pub price_checks: Arc<std::sync::atomic::AtomicUsize>,
     pub total_latency: Arc<std::sync::atomic::AtomicU64>,
     pub max_latency: Arc<std::sync::atomic::AtomicU64>,
+    pub contention_count: Arc<std::sync::atomic::AtomicUsize>,
+    pub order_queue_depth: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl TestMetrics {
@@ -19,6 +21,8 @@ impl TestMetrics {
             price_checks: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             total_latency: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             max_latency: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            contention_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            order_queue_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -57,12 +61,17 @@ impl TestMetrics {
             .total_latency
             .load(std::sync::atomic::Ordering::Relaxed);
         let max_latency = self.max_latency.load(std::sync::atomic::Ordering::Relaxed);
-
         let avg_latency = if orders > 0 {
             total_latency as f64 / orders as f64
         } else {
             0.0
         };
+        let contention_events = self
+            .contention_count
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let avg_queue_depth = self
+            .order_queue_depth
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         let report = format!(
             "\n=== Stress Test Results ===\n\
@@ -75,7 +84,9 @@ impl TestMetrics {
             Price checks/second: {:.2}\n\
             Average latency: {:.2} μs\n\
             Maximum latency: {} μs\n\
-            Trade/Order ratio: {:.2}%\n",
+            Trade/Order ratio: {:.2}%\n\
+            Contention events: {}\n\
+            Average queue depth: {}\n",
             duration,
             orders,
             trades,
@@ -85,7 +96,9 @@ impl TestMetrics {
             prices as f64 / duration.as_secs_f64(),
             avg_latency,
             max_latency,
-            (trades as f64 / orders as f64) * 100.0
+            (trades as f64 / orders as f64) * 100.0,
+            contention_events,
+            avg_queue_depth,
         );
 
         info!("{}", report);

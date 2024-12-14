@@ -10,12 +10,12 @@ use engine::engine::{
     order_book::OrderBook,
 };
 
-pub const NUM_MARKET_MAKERS: usize = 5;
-pub const NUM_TRADERS: usize = 20;
-pub const NUM_PRICE_CHECKERS: usize = 10;
-pub const ORDERS_PER_TRADER: usize = 1000;
-pub const TEST_DURATION_SECS: u64 = 60;
-pub const TRADING_PAIRS: &[&str] = &["BTC/USD", "ETH/USD", "SOL/USD"];
+pub const NUM_MARKET_MAKERS: usize = 20;
+pub const NUM_TRADERS: usize = 50;
+pub const NUM_PRICE_CHECKERS: usize = 20;
+pub const ORDERS_PER_TRADER: usize = 2000;
+pub const TEST_DURATION_SECS: u64 = 30;
+pub const TRADING_PAIRS: &[&str] = &["BTC/USD"];
 
 pub mod metrics;
 pub mod simulator;
