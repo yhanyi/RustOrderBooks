@@ -35,6 +35,13 @@ jobs:
           command: test
           args: --verbose
 
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v2
+        with:
+          name: benchmark-results
+          path: target/benchmark_results.txt
+
+
   linting:
     name: Lint
     runs-on: ubuntu-latest
