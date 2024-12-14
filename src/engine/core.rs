@@ -1,6 +1,6 @@
 use crate::engine::api::OrderBookEntry;
 use crate::engine::models::{Order, Trade, TradingPair};
-use crate::engine::order_book::{OrderBook, SimpleOrderBook};
+use crate::engine::order_book::OrderBook;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tracing::info;
@@ -18,16 +18,14 @@ pub enum Message {
 
 pub struct Engine {
     order_books: HashMap<TradingPair, Box<dyn OrderBook>>,
-}
-
-impl Default for Engine {
-    fn default() -> Self {
-        Self::new()
-    }
+    order_book_factory: Box<dyn Fn(TradingPair) -> Box<dyn OrderBook> + Send + Sync>,
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    pub fn new<F>(order_book_factory: F) -> Self
+    where
+        F: Fn(TradingPair) -> Box<dyn OrderBook> + Send + Sync + 'static,
+    {
         tracing_subscriber::fmt()
             .with_target(false)
             .with_thread_ids(true)
@@ -39,6 +37,7 @@ impl Engine {
 
         Engine {
             order_books: HashMap::new(),
+            order_book_factory: Box::new(order_book_factory),
         }
     }
 
@@ -56,10 +55,10 @@ impl Engine {
             price
         } else {
             info!("Creating new order book");
-            let order_book = SimpleOrderBook::new(trading_pair.clone());
+            let order_book = (self.order_book_factory)(trading_pair.clone());
             let price = order_book.get_current_price().await;
             info!("Got price from new order book: {:?}", price);
-            self.order_books.insert(trading_pair, Box::new(order_book));
+            self.order_books.insert(trading_pair, order_book);
             price
         };
 
@@ -102,9 +101,7 @@ impl Engine {
                     let order_book = self
                         .order_books
                         .entry(order.trading_pair.clone())
-                        .or_insert_with(|| {
-                            Box::new(SimpleOrderBook::new(order.trading_pair.clone()))
-                        });
+                        .or_insert_with(|| (self.order_book_factory)(order.trading_pair.clone()));
                     order_book.add_order(order).await;
                 }
                 Message::GetPrice(trading_pair, response_tx) => {
@@ -127,11 +124,14 @@ impl Engine {
     }
 }
 
-pub fn start_engine() -> mpsc::Sender<Message> {
+pub fn start_engine<F>(order_book_factory: F) -> mpsc::Sender<Message>
+where
+    F: Fn(TradingPair) -> Box<dyn OrderBook> + Send + Sync + 'static,
+{
     let (tx, rx) = mpsc::channel(100);
 
     tokio::spawn(async move {
-        let mut engine = Engine::new();
+        let mut engine = Engine::new(order_book_factory);
         engine.run(rx).await;
     });
 
