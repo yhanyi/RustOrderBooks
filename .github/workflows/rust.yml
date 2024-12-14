@@ -36,7 +36,7 @@ jobs:
           args: --verbose
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: target/benchmark_results.txt
