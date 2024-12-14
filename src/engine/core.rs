@@ -95,7 +95,7 @@ impl Engine {
     }
 
     pub async fn run(&mut self, mut rx: mpsc::Receiver<Message>) {
-        info!("Starting engine");
+        info!("Starting engine.");
         while let Some(message) = rx.recv().await {
             match message {
                 Message::NewOrder(order) => {
@@ -118,12 +118,12 @@ impl Engine {
                         .await;
                 }
                 Message::Shutdown => {
-                    info!("Received shutdown signal");
+                    info!("Received shutdown signal.");
                     break;
                 }
             }
         }
-        info!("Engine stopped");
+        info!("Engine stopped.");
     }
 }
 

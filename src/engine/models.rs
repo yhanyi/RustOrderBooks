@@ -1,13 +1,14 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OrderType {
     Buy,
     Sell,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TradingPair {
     pub base: String,
     pub quote: String,
@@ -38,18 +39,18 @@ impl FromStr for TradingPair {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
     pub id: u64,
     pub trading_pair: TradingPair,
     pub order_type: OrderType,
     pub price: f64,
     pub quantity: f64,
-    #[allow(dead_code)]
+    #[serde(with = "chrono::serde::ts_seconds")]
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trade {
     pub id: u64,
     pub trading_pair: TradingPair,
@@ -59,5 +60,6 @@ pub struct Trade {
     pub sell_order_id: u64,
     pub price: f64,
     pub quantity: f64,
+    #[serde(with = "chrono::serde::ts_seconds")]
     pub timestamp: DateTime<Utc>,
 }

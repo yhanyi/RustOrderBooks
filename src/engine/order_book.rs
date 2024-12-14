@@ -26,15 +26,11 @@ impl PartialOrd for OrderPrice {
 #[async_trait]
 pub trait OrderBook: Send + Sync {
     async fn add_order(&self, order: Order);
-    #[allow(dead_code)]
     async fn match_orders(&self) -> Vec<Trade>;
     async fn get_current_price(&self) -> Option<f64>;
     async fn get_order_book(&self) -> (Vec<OrderBookEntry>, Vec<OrderBookEntry>);
     async fn get_trade_history(&self) -> Vec<Trade>;
-    #[allow(dead_code)]
     async fn get_active_orders_count(&self) -> usize;
-    #[allow(dead_code)]
-    async fn cleanup(&self) {}
 }
 
 pub struct SimpleOrderBook {

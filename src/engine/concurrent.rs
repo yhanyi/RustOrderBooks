@@ -88,7 +88,6 @@ impl PriceLevel {
     }
 }
 
-#[allow(dead_code)]
 pub struct ConcurrentOrderBook {
     trading_pair: TradingPair,
     buy_levels: Arc<RwLock<BTreeMap<OrderPrice, Arc<RwLock<PriceLevel>>>>>,
