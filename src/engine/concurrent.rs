@@ -89,7 +89,7 @@ impl PriceLevel {
 }
 
 pub struct ConcurrentOrderBook {
-    trading_pair: TradingPair,
+    _trading_pair: TradingPair,
     buy_levels: Arc<RwLock<BTreeMap<OrderPrice, Arc<RwLock<PriceLevel>>>>>,
     sell_levels: Arc<RwLock<BTreeMap<OrderPrice, Arc<RwLock<PriceLevel>>>>>,
     trade_tx: mpsc::UnboundedSender<Trade>,
@@ -103,7 +103,7 @@ impl ConcurrentOrderBook {
 
         (
             Self {
-                trading_pair,
+                _trading_pair: trading_pair,
                 buy_levels: Arc::new(RwLock::new(BTreeMap::new())),
                 sell_levels: Arc::new(RwLock::new(BTreeMap::new())),
                 trade_tx,
