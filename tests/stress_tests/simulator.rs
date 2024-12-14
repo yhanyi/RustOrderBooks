@@ -45,7 +45,6 @@ pub async fn simulate_market_maker(
 
         let start_time = Instant::now();
 
-        // Send the orders
         let _ = engine_tx.send(Message::NewOrder(buy_order)).await;
         let _ = engine_tx.send(Message::NewOrder(sell_order)).await;
 
