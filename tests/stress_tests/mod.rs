@@ -1,5 +1,6 @@
 use futures::future::join_all;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::Barrier;
 use tracing::info;
@@ -79,7 +80,12 @@ where
     }
 
     info!("All tasks spawned, waiting for completion");
-    join_all(handles).await;
+    tokio::time::timeout(
+        Duration::from_secs(TEST_DURATION_SECS + 10),
+        join_all(handles),
+    )
+    .await
+    .expect("Stress test timed out");
     let duration = start.elapsed();
 
     let report = metrics.report(duration);
