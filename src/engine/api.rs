@@ -106,7 +106,17 @@ pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
             } else {
                 info!("Sent shutdown signal to engine");
             }
-            tokio::time::timeout(Duration::from_secs(5), shutdown_rx.recv()).await;
+            match tokio::time::timeout(Duration::from_secs(5), shutdown_rx.recv()).await {
+                Ok(Some(_)) => {
+                    println!("Received shutdown signal");
+                },
+                Ok(None) => {
+                    println!("Shutdown channel closed");
+                },
+                Err(_) => {
+                    println!("Timed out waiting for shutdown signal");
+                }
+            }
         }
     }
 }

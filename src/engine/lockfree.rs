@@ -33,10 +33,7 @@ impl AtomicPriceLevel {
         let micro = (order.quantity * PRECISION as f64) as u64;
         self.total_quantity.fetch_add(micro, Ordering::AcqRel);
         self.order_count.fetch_add(1, Ordering::AcqRel);
-        self.head.push(OrderMicroQuantity {
-            order: order,
-            micro: micro,
-        });
+        self.head.push(OrderMicroQuantity { order, micro });
     }
 
     fn try_match(&self, quantity_needed: f64) -> Option<(Order, f64)> {
