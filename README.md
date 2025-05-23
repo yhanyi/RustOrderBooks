@@ -10,19 +10,19 @@ Project that attempts to implement and benchmark three different order book arch
 
 ### Core Engine
 
-`models.rs`- Core data structures (Order, Trade, TradingPair)
-`core.rs` - Message-driven engine that orchestrates order processing
-`api.rs` - REST API server for order placement and market data
-`order_book.rs` SimpleOrderBook implementation and OrderBook trait
-`concurrent.rs` - ConcurrentOrderBook with hierarchical locking
-`lockfree.rs` - LockFreeOrderBook using atomic operations
+- `models.rs`- Core data structures (Order, Trade, TradingPair)
+- `core.rs` - Message-driven engine that orchestrates order processing
+- `api.rs` - REST API server for order placement and market data
+- `order_book.rs` SimpleOrderBook implementation and OrderBook trait
+- `concurrent.rs` - ConcurrentOrderBook with hierarchical locking
+- `lockfree.rs` - LockFreeOrderBook using atomic operations
 
 ## Benchmarking
 
-`mod.rs` - Main stress testing orchestration
-`simulator.rs` - Market participant simulators
-`metrics.rs` - Performance metrics collection
-`test/order_book_benchmarks.rs` - Runs all implementations through identical stress tests
+- `mod.rs` - Main stress testing orchestration
+- `simulator.rs` - Market participant simulators
+- `metrics.rs` - Performance metrics collection
+- `test/order_book_benchmarks.rs` - Runs all implementations through identical stress tests
 
 ## Architecture
 
