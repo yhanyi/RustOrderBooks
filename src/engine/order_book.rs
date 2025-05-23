@@ -39,6 +39,8 @@ pub struct SimpleOrderBook {
     trading_pair: TradingPair,
     buy_orders: Mutex<BTreeMap<OrderPrice, Vec<Order>>>,
     sell_orders: Mutex<BTreeMap<OrderPrice, Vec<Order>>>,
+    // VecDeque<Order> might be better for front removal
+    // LinkedList<Order> has O(1) removal but worse cache locality
     trade_history: Mutex<Vec<Trade>>,
 }
 

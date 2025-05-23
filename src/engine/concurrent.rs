@@ -49,6 +49,7 @@ impl PriceLevel {
             return None;
         }
 
+        let original_order = self.orders.front()?.clone();
         let resting_order = self.orders.front_mut()?;
         let match_quantity = f64::min(incoming_order.quantity, resting_order.quantity);
 
@@ -59,7 +60,7 @@ impl PriceLevel {
         resting_order.quantity -= match_quantity;
         self.total_quantity -= match_quantity;
 
-        let resting_order = self.orders.front()?.clone();
+        let resting_order = original_order;
         let match_quantity = f64::min(incoming_order.quantity, resting_order.quantity);
 
         if match_quantity <= 0.0 {

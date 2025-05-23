@@ -5,10 +5,18 @@ use crossbeam_skiplist::SkipMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 
+const PRECISION: u64 = 1_000_000;
+
+#[derive(Clone)]
+struct OrderMicroQuantity {
+    order: Order,
+    micro: u64,
+}
+
 struct AtomicPriceLevel {
     total_quantity: AtomicU64,
     order_count: AtomicUsize,
-    head: crossbeam_queue::SegQueue<Order>,
+    head: crossbeam_queue::SegQueue<OrderMicroQuantity>,
 }
 
 impl AtomicPriceLevel {
@@ -22,11 +30,13 @@ impl AtomicPriceLevel {
 
     fn add_order(&self, order: Order) {
         // Convert f64 to u64 bits for atomic operations
-        let quantity_bits = order.quantity.to_bits();
-        self.total_quantity
-            .fetch_add(quantity_bits, Ordering::AcqRel);
+        let micro = (order.quantity * PRECISION as f64) as u64;
+        self.total_quantity.fetch_add(micro, Ordering::AcqRel);
         self.order_count.fetch_add(1, Ordering::AcqRel);
-        self.head.push(order);
+        self.head.push(OrderMicroQuantity {
+            order: order,
+            micro: micro,
+        });
     }
 
     fn try_match(&self, quantity_needed: f64) -> Option<(Order, f64)> {
@@ -35,26 +45,29 @@ impl AtomicPriceLevel {
         }
 
         if let Some(mut order) = self.head.pop() {
-            let match_quantity = f64::min(order.quantity, quantity_needed);
-            let quantity_bits = match_quantity.to_bits();
-            self.total_quantity
-                .fetch_sub(quantity_bits, Ordering::AcqRel);
+            let quantity_needed = (quantity_needed * PRECISION as f64) as u64;
+            let match_micro = u64::min(order.micro, quantity_needed);
+            let match_quantity = match_micro as f64 / PRECISION as f64;
 
-            order.quantity -= match_quantity;
-            if order.quantity > 0.0 {
+            self.total_quantity.fetch_sub(match_micro, Ordering::AcqRel);
+            order.micro -= match_micro;
+            order.order.quantity = order.micro as f64 / PRECISION as f64;
+
+            if order.micro > 0 {
                 self.head.push(order.clone());
             } else {
                 self.order_count.fetch_sub(1, Ordering::AcqRel);
             }
 
-            Some((order, match_quantity))
+            Some((order.order, match_quantity))
         } else {
             None
         }
     }
 
     fn get_total_quantity(&self) -> f64 {
-        f64::from_bits(self.total_quantity.load(Ordering::Acquire))
+        let micro = self.total_quantity.load(Ordering::Acquire);
+        micro as f64 / PRECISION as f64
     }
 }
 
