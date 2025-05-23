@@ -26,14 +26,14 @@ impl Engine {
     where
         F: Fn(TradingPair) -> Box<dyn OrderBook> + Send + Sync + 'static,
     {
-        tracing_subscriber::fmt()
+        let _ = tracing_subscriber::fmt()
             .with_target(false)
             .with_thread_ids(true)
             .with_level(true)
             .with_file(true)
             .with_line_number(true)
             .with_env_filter("info")
-            .init();
+            .try_init(); // Use try_init so no panic if already initialised
 
         Engine {
             order_books: HashMap::new(),
@@ -98,10 +98,11 @@ impl Engine {
         while let Some(message) = rx.recv().await {
             match message {
                 Message::NewOrder(order) => {
+                    let trading_pair = order.trading_pair.clone();
                     let order_book = self
                         .order_books
-                        .entry(order.trading_pair.clone())
-                        .or_insert_with(|| (self.order_book_factory)(order.trading_pair.clone()));
+                        .entry(trading_pair.clone())
+                        .or_insert_with(|| (self.order_book_factory)(trading_pair));
                     order_book.add_order(order).await;
                 }
                 Message::GetPrice(trading_pair, response_tx) => {

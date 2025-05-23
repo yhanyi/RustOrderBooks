@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -99,12 +100,13 @@ pub async fn run_api_server(engine_tx: mpsc::Sender<Message>) {
         }
         _ = tokio::signal::ctrl_c() => {
             info!("Shutdown signal received, stopping API server.");
+            let (_, mut shutdown_rx) = mpsc::channel::<Message>(1);
             if let Err(e) = engine_tx.send(Message::Shutdown).await {
                 info!("Engine already shut down: {}", e);
             } else {
                 info!("Sent shutdown signal to engine");
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::timeout(Duration::from_secs(5), shutdown_rx.recv()).await;
         }
     }
 }
@@ -125,7 +127,12 @@ async fn place_order(
     let order_type = match request.order_type.to_lowercase().as_str() {
         "buy" => OrderType::Buy,
         "sell" => OrderType::Sell,
-        _ => panic!("Invalid order type"),
+        _ => {
+            return Json(PlaceOrderResponse {
+                order_id: 0,
+                status: format!("Invalid order type: {}", request.order_type),
+            })
+        }
     };
 
     let order = Order {
