@@ -1,16 +1,39 @@
 use crate::models::{Order, OrderBook, OrderType, TradingPair};
 use async_trait::async_trait;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Price(f64);
 
 impl Eq for Price {}
 
+impl PartialOrd for Price {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.0.is_nan() && other.0.is_nan() {
+            Some(Ordering::Equal)
+        } else if self.0.is_nan() {
+            Some(Ordering::Greater)
+        } else if other.0.is_nan() {
+            Some(Ordering::Less)
+        } else {
+            self.0.partial_cmp(&other.0)
+        }
+    }
+}
+
 impl Ord for Price {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.0.is_nan() && other.0.is_nan() {
+            Ordering::Equal
+        } else if self.0.is_nan() {
+            Ordering::Greater
+        } else if other.0.is_nan() {
+            Ordering::Less
+        } else {
+            self.0.partial_cmp(&other.0).unwrap_or(Ordering::Equal)
+        }
     }
 }
 
@@ -57,10 +80,9 @@ impl PriceLevel {
             resting_order.quantity -= match_qty;
             self.total_quantity -= match_qty;
 
-            // Remove order if fully filled
+            // Remove order if fully filled.
             if resting_order.quantity <= 0.0 {
                 let _filled_order = self.orders.remove(0);
-                // Use the order ID to show it's being used
                 #[cfg(debug_assertions)]
                 println!("Order {} fully filled", _filled_order.id);
             }
@@ -71,7 +93,8 @@ impl PriceLevel {
 }
 
 pub struct SimpleOrderBook {
-    _trading_pair: TradingPair, // Prefix with _ to indicate it's intentionally unused
+    // Temporarily unused.
+    _trading_pair: TradingPair,
     // Highest price first.
     buy_orders: Mutex<BTreeMap<Price, PriceLevel>>,
     // Lowest price first.
