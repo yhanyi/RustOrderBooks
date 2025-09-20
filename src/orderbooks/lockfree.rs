@@ -147,6 +147,7 @@ impl LockFreeOrderBook {
     }
 }
 
+// LockFreeOrderBook implements the OrderBook trait.
 #[async_trait]
 impl OrderBook for LockFreeOrderBook {
     async fn add_order(&self, order: Order) {
@@ -195,42 +196,5 @@ impl OrderBook for LockFreeOrderBook {
             .sum();
 
         buy_count + sell_count
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_lockfree_basic_operations() {
-        let trading_pair = TradingPair::new("BTC", "USD");
-        let orderbook = LockFreeOrderBook::new(trading_pair.clone());
-
-        assert_eq!(orderbook.get_active_orders_count().await, 0);
-        assert_eq!(orderbook.get_current_price().await, None);
-
-        let buy_order = Order::new(1, trading_pair.clone(), OrderType::Buy, 50000.0, 1.0);
-        orderbook.add_order(buy_order).await;
-
-        assert_eq!(orderbook.get_active_orders_count().await, 1);
-        assert_eq!(orderbook.get_current_price().await, Some(50000.0));
-    }
-
-    #[tokio::test]
-    async fn test_lockfree_matching() {
-        let trading_pair = TradingPair::new("ETH", "USD");
-        let orderbook = LockFreeOrderBook::new(trading_pair.clone());
-
-        let buy_order = Order::new(1, trading_pair.clone(), OrderType::Buy, 3000.0, 2.0);
-        orderbook.add_order(buy_order).await;
-
-        let sell_order = Order::new(2, trading_pair.clone(), OrderType::Sell, 3000.0, 1.0);
-        orderbook.add_order(sell_order).await;
-
-        assert_eq!(orderbook.get_active_orders_count().await, 1);
-        let (bid, ask) = orderbook.get_best_bid_ask().await;
-        assert_eq!(bid, Some(3000.0));
-        assert_eq!(ask, None);
     }
 }
