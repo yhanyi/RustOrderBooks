@@ -1,0 +1,286 @@
+use crate::models::{Order, OrderBook, OrderType, TradingPair};
+use async_trait::async_trait;
+use std::collections::BTreeMap;
+use tokio::sync::Mutex;
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+struct Price(f64);
+
+impl Eq for Price {}
+
+impl Ord for Price {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
+impl From<f64> for Price {
+    fn from(price: f64) -> Self {
+        Price(price)
+    }
+}
+
+#[derive(Debug)]
+struct PriceLevel {
+    orders: Vec<Order>,
+    total_quantity: f64,
+}
+
+impl PriceLevel {
+    fn new() -> Self {
+        Self {
+            orders: Vec::new(),
+            total_quantity: 0.0,
+        }
+    }
+
+    fn add_order(&mut self, order: Order) {
+        self.total_quantity += order.quantity;
+        self.orders.push(order);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.orders.is_empty()
+    }
+
+    // Match against current price level, returns (matched_quantity, remaining_orders).
+    fn match_order(&mut self, incoming_quantity: f64) -> f64 {
+        let mut matched_quantity = 0.0;
+        let mut remaining_quantity = incoming_quantity;
+
+        while remaining_quantity > 0.0 && !self.orders.is_empty() {
+            let resting_order = &mut self.orders[0];
+            let match_qty = f64::min(remaining_quantity, resting_order.quantity);
+
+            matched_quantity += match_qty;
+            remaining_quantity -= match_qty;
+            resting_order.quantity -= match_qty;
+            self.total_quantity -= match_qty;
+
+            // Remove order if fully filled
+            if resting_order.quantity <= 0.0 {
+                let _filled_order = self.orders.remove(0);
+                // Use the order ID to show it's being used
+                #[cfg(debug_assertions)]
+                println!("Order {} fully filled", _filled_order.id);
+            }
+        }
+
+        matched_quantity
+    }
+}
+
+pub struct SimpleOrderBook {
+    _trading_pair: TradingPair, // Prefix with _ to indicate it's intentionally unused
+    // Highest price first.
+    buy_orders: Mutex<BTreeMap<Price, PriceLevel>>,
+    // Lowest price first.
+    sell_orders: Mutex<BTreeMap<Price, PriceLevel>>,
+}
+
+impl SimpleOrderBook {
+    pub fn new(trading_pair: TradingPair) -> Self {
+        Self {
+            _trading_pair: trading_pair,
+            buy_orders: Mutex::new(BTreeMap::new()),
+            sell_orders: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    async fn process_order(&self, order: Order) {
+        match order.order_type {
+            OrderType::Buy => self.process_buy_order(order).await,
+            OrderType::Sell => self.process_sell_order(order).await,
+        }
+    }
+
+    async fn process_buy_order(&self, mut buy_order: Order) {
+        let mut sell_orders = self.sell_orders.lock().await;
+
+        // Match against existing sell orders from lowest price first.
+        let mut prices_to_remove = Vec::new();
+
+        for (price, level) in sell_orders.iter_mut() {
+            if buy_order.quantity <= 0.0 {
+                break;
+            }
+
+            // Only match if buy price >= sell price.
+            if buy_order.price >= price.0 {
+                let matched_qty = level.match_order(buy_order.quantity);
+                buy_order.quantity -= matched_qty;
+
+                if level.is_empty() {
+                    prices_to_remove.push(*price);
+                }
+            } else {
+                // No more matching possible.
+                break;
+            }
+        }
+
+        // Clean up empty price levels.
+        for price in prices_to_remove {
+            sell_orders.remove(&price);
+        }
+
+        drop(sell_orders);
+
+        // Add remaining quantity to buy side.
+        if buy_order.quantity > 0.0 {
+            let mut buy_orders = self.buy_orders.lock().await;
+            buy_orders
+                .entry(Price::from(buy_order.price))
+                .or_insert_with(PriceLevel::new)
+                .add_order(buy_order);
+        }
+    }
+
+    async fn process_sell_order(&self, mut sell_order: Order) {
+        let mut buy_orders = self.buy_orders.lock().await;
+
+        // Match against existing buy orders from highest price first.
+        let mut prices_to_remove = Vec::new();
+
+        for (price, level) in buy_orders.iter_mut().rev() {
+            if sell_order.quantity <= 0.0 {
+                break;
+            }
+
+            // Only match if sell price <= buy price.
+            if sell_order.price <= price.0 {
+                let matched_qty = level.match_order(sell_order.quantity);
+                sell_order.quantity -= matched_qty;
+
+                if level.is_empty() {
+                    prices_to_remove.push(*price);
+                }
+            } else {
+                // No more matching possible.
+                break;
+            }
+        }
+
+        // Clean up empty price levels.
+        for price in prices_to_remove {
+            buy_orders.remove(&price);
+        }
+
+        drop(buy_orders);
+
+        // Add remaining quantity to sell side.
+        if sell_order.quantity > 0.0 {
+            let mut sell_orders = self.sell_orders.lock().await;
+            sell_orders
+                .entry(Price::from(sell_order.price))
+                .or_insert_with(PriceLevel::new)
+                .add_order(sell_order);
+        }
+    }
+}
+
+#[async_trait]
+// SimpleOrderBook implements the OrderBook trait.
+impl OrderBook for SimpleOrderBook {
+    async fn add_order(&self, order: Order) {
+        self.process_order(order).await;
+    }
+
+    async fn get_current_price(&self) -> Option<f64> {
+        let (bid, ask) = self.get_best_bid_ask().await;
+        match (bid, ask) {
+            (Some(bid), Some(ask)) => Some((bid + ask) / 2.0),
+            (Some(bid), None) => Some(bid),
+            (None, Some(ask)) => Some(ask),
+            (None, None) => None,
+        }
+    }
+
+    async fn get_best_bid_ask(&self) -> (Option<f64>, Option<f64>) {
+        let buy_orders = self.buy_orders.lock().await;
+        let sell_orders = self.sell_orders.lock().await;
+
+        let best_bid = buy_orders
+            .iter()
+            .next_back() // Highest price.
+            .map(|(price, _)| price.0);
+
+        let best_ask = sell_orders
+            .iter()
+            .next() // Lowest price.
+            .map(|(price, _)| price.0);
+
+        (best_bid, best_ask)
+    }
+
+    async fn get_active_orders_count(&self) -> usize {
+        let buy_orders = self.buy_orders.lock().await;
+        let sell_orders = self.sell_orders.lock().await;
+
+        let buy_count: usize = buy_orders.values().map(|level| level.orders.len()).sum();
+
+        let sell_count: usize = sell_orders.values().map(|level| level.orders.len()).sum();
+
+        buy_count + sell_count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_basic_operations() {
+        let trading_pair = TradingPair::new("BTC", "USD");
+        let orderbook = SimpleOrderBook::new(trading_pair.clone());
+
+        assert_eq!(orderbook.get_active_orders_count().await, 0);
+        assert_eq!(orderbook.get_current_price().await, None);
+
+        let buy_order = Order::new(1, trading_pair.clone(), OrderType::Buy, 50000.0, 1.0);
+        orderbook.add_order(buy_order).await;
+
+        assert_eq!(orderbook.get_active_orders_count().await, 1);
+        assert_eq!(orderbook.get_current_price().await, Some(50000.0));
+
+        let sell_order = Order::new(2, trading_pair.clone(), OrderType::Sell, 50100.0, 0.5);
+        orderbook.add_order(sell_order).await;
+
+        assert_eq!(orderbook.get_active_orders_count().await, 2);
+        assert_eq!(orderbook.get_current_price().await, Some(50050.0)); // Mid price
+    }
+
+    #[tokio::test]
+    async fn test_order_matching() {
+        let trading_pair = TradingPair::new("ETH", "USD");
+        let orderbook = SimpleOrderBook::new(trading_pair.clone());
+
+        let buy_order = Order::new(1, trading_pair.clone(), OrderType::Buy, 3000.0, 2.0);
+        orderbook.add_order(buy_order).await;
+
+        let sell_order = Order::new(2, trading_pair.clone(), OrderType::Sell, 3000.0, 1.0);
+        orderbook.add_order(sell_order).await;
+
+        assert_eq!(orderbook.get_active_orders_count().await, 1);
+        let (bid, ask) = orderbook.get_best_bid_ask().await;
+        assert_eq!(bid, Some(3000.0));
+        assert_eq!(ask, None);
+    }
+
+    #[tokio::test]
+    async fn test_partial_fills() {
+        let trading_pair = TradingPair::new("BTC", "USD");
+        let orderbook = SimpleOrderBook::new(trading_pair.clone());
+
+        let sell_order = Order::new(1, trading_pair.clone(), OrderType::Sell, 50000.0, 2.0);
+        orderbook.add_order(sell_order).await;
+
+        let buy_order = Order::new(2, trading_pair.clone(), OrderType::Buy, 50000.0, 0.5);
+        orderbook.add_order(buy_order).await;
+
+        assert_eq!(orderbook.get_active_orders_count().await, 1);
+        let (bid, ask) = orderbook.get_best_bid_ask().await;
+        assert_eq!(bid, None);
+        assert_eq!(ask, Some(50000.0));
+    }
+}
