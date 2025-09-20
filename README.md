@@ -1,8 +1,8 @@
 # RustOrderBooks
 
-This project explorings different concurrency models in Rust while learning the languages and discovering useful Rust libraries.
+This project explores the basics of concurrency in Rust while experimenting with libraries like Tokio and Crossbeam.
 
-It implements three versions of a basic order book, along with integrationn tests and benchmarks using Criterion.
+It implements three versions of a basic order book, along with integration tests and Criterion benchmarks.
 
 **SimpleOrderBook** (`simple.rs`)
 
@@ -24,6 +24,6 @@ It implements three versions of a basic order book, along with integrationn test
 
 **Note**
 
-This project was done in December 2024 but cleaned up recently for readability and testing, and is not being maintained.
+This project was completed in December 2024 but was briefly cleaned up in September 2025 for readability and to pass GitHub Actions checks. It is no longer actively maintained.
 
-Thank you for checking out the project! :)
+Thank you for checking out this project! :)
