@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use engine::models::{Order, OrderBook, OrderType, TradingPair};
-use engine::orderbooks::simple::SimpleOrderBook;
+use rustorderbooks::models::{Order, OrderBook, OrderType, TradingPair};
+use rustorderbooks::orderbooks::simple::SimpleOrderBook;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 

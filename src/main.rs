@@ -2,185 +2,123 @@ mod models;
 mod orderbooks;
 mod server;
 
-use models::OrderBook;
-use models::TradingPair;
-use orderbooks::simple::SimpleOrderBook;
+use rustorderbooks::models::TradingPair;
+use rustorderbooks::orderbooks::concurrent::ConcurrentOrderBook;
+use rustorderbooks::orderbooks::lockfree::LockFreeOrderBook;
+use rustorderbooks::orderbooks::simple::SimpleOrderBook;
 use std::env;
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+enum OrderBookType {
+    Simple,
+    Concurrent,
+    LockFree,
+}
+
+impl OrderBookType {
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s.to_lowercase().as_str() {
+            "simple" => Ok(OrderBookType::Simple),
+            "concurrent" => Ok(OrderBookType::Concurrent),
+            "lockfree" => Ok(OrderBookType::LockFree),
+            _ => Err(format!(
+                "Unknown implementation: {}. Available: simple, concurrent, lockfree",
+                s
+            )),
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            OrderBookType::Simple => "simple",
+            OrderBookType::Concurrent => "concurrent",
+            OrderBookType::LockFree => "lockfree",
+        }
+    }
+}
+
+fn create_orderbook(
+    orderbook_type: OrderBookType,
+    trading_pair: TradingPair,
+) -> Arc<dyn rustorderbooks::models::OrderBook> {
+    match orderbook_type {
+        OrderBookType::Simple => Arc::new(SimpleOrderBook::new(trading_pair)),
+        OrderBookType::Concurrent => Arc::new(ConcurrentOrderBook::new(trading_pair)),
+        OrderBookType::LockFree => Arc::new(LockFreeOrderBook::new(trading_pair)),
+    }
+}
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        println!("Usage: {} <port> [mode]", args[0]);
-        println!("Modes:");
-        println!("  server  - Start HTTP server (default)");
-        println!("  bench   - Run benchmarks");
-        println!("  test    - Run interactive test");
+    if args.len() != 3 {
+        println!("Usage: {} <port> <implementation>", args[0]);
+        println!();
+        println!("Implementations:");
+        println!("  simple     - SimpleOrderBook (default)");
+        println!("  concurrent - ConcurrentOrderBook");
+        println!("  lockfree   - LockFreeOrderBook");
         return;
     }
 
     let port: u16 = args[1].parse().expect("Invalid port number");
-    let mode = args.get(2).map(|s| s.as_str()).unwrap_or("server");
-
-    match mode {
-        "server" => start_server(port).await,
-        "bench" => run_benchmarks().await,
-        "test" => run_interactive_test(port).await,
-        _ => {
-            println!("Unknown mode: {}", mode);
-            println!("Available modes: server, bench, test");
-        }
-    }
+    let orderbook_type = OrderBookType::from_str(&args[2]).unwrap_or_else(|_| {
+        println!("Invalid orderbook type, defaulting to 'simple'.");
+        OrderBookType::Simple
+    });
+    start_server(port, orderbook_type).await;
 }
 
-async fn start_server(port: u16) {
-    println!("Starting OrderBook server");
-
-    // TODO: Make this configurable again later.
-    server::start_server(port, |trading_pair| {
-        Arc::new(SimpleOrderBook::new(trading_pair))
-    })
-    .await;
-}
-
-async fn run_benchmarks() {
-    println!("🔥 Running Performance Benchmarks");
-
-    // Simple throughput test
-    let trading_pair = TradingPair::new("BTC", "USD");
-    let orderbook = Arc::new(SimpleOrderBook::new(trading_pair.clone()));
-
-    let start = std::time::Instant::now();
-    let num_orders = 10_000;
-
-    println!("Adding {} orders...", num_orders);
-
-    for i in 0..num_orders {
-        let order = models::Order::new(
-            i as u64,
-            trading_pair.clone(),
-            if i % 2 == 0 {
-                models::OrderType::Buy
-            } else {
-                models::OrderType::Sell
-            },
-            50000.0 + (i as f64 % 100.0),
-            1.0,
-        );
-        orderbook.add_order(order).await;
-    }
-
-    let duration = start.elapsed();
-    let orders_per_sec = num_orders as f64 / duration.as_secs_f64();
-
-    println!("✅ Processed {} orders in {:?}", num_orders, duration);
-    println!("📊 Throughput: {:.2} orders/second", orders_per_sec);
+async fn start_server(port: u16, orderbook_type: OrderBookType) {
     println!(
-        "📈 Active orders: {}",
-        orderbook.get_active_orders_count().await
+        "Starting Orderbook Server on port {} with {} implementation",
+        port,
+        orderbook_type.as_str()
     );
 
-    if let Some(price) = orderbook.get_current_price().await {
-        println!("💰 Current price: ${:.2}", price);
-    }
-}
-
-async fn run_interactive_test(port: u16) {
-    println!("🧪 Running Interactive Test");
-
-    // Start server in background
-    let server_handle = tokio::spawn(async move {
-        server::start_server(port, |trading_pair| {
-            Arc::new(SimpleOrderBook::new(trading_pair))
-        })
-        .await;
-    });
-
-    // Wait a bit for server to start
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Run some test requests
-    let client = reqwest::Client::new();
-    let base_url = format!("http://localhost:{}", port);
-
-    println!("Testing endpoints...");
-
-    // Test health
-    match client.get(&format!("{}/health", base_url)).send().await {
-        Ok(response) => println!("✅ Health check: {}", response.status()),
-        Err(e) => println!("❌ Health check failed: {}", e),
-    }
-
-    // Test price query
-    match client
-        .get(&format!("{}/price/BTC/USD", base_url))
-        .send()
-        .await
-    {
-        Ok(response) => {
-            println!("✅ Price query: {}", response.status());
-            if let Ok(text) = response.text().await {
-                println!("   Response: {}", text);
-            }
-        }
-        Err(e) => println!("❌ Price query failed: {}", e),
-    }
-
-    // Test order placement
-    let order_request = serde_json::json!({
-        "trading_pair": "BTC/USD",
-        "order_type": "buy",
-        "price": 50000.0,
-        "quantity": 1.0
-    });
-
-    match client
-        .post(&format!("{}/order", base_url))
-        .json(&order_request)
-        .send()
-        .await
-    {
-        Ok(response) => {
-            println!("✅ Order placement: {}", response.status());
-            if let Ok(text) = response.text().await {
-                println!("   Response: {}", text);
-            }
-        }
-        Err(e) => println!("❌ Order placement failed: {}", e),
-    }
-
-    // Test price after order
-    match client
-        .get(&format!("{}/price/BTC/USD", base_url))
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if let Ok(text) = response.text().await {
-                println!("📊 Price after order: {}", text);
-            }
-        }
-        Err(e) => println!("❌ Price query after order failed: {}", e),
-    }
-
-    println!("🎯 Interactive test complete! Server is still running...");
-
-    // Keep server running
-    server_handle.await.unwrap();
+    rustorderbooks::server::start_server(port, move |trading_pair| {
+        create_orderbook(orderbook_type.clone(), trading_pair)
+    })
+    .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_orderbook_creation() {
-        let trading_pair = TradingPair::new("TEST", "USD");
-        let orderbook = SimpleOrderBook::new(trading_pair);
+    #[test]
+    fn test_orderbook_type_parsing() {
+        assert!(matches!(
+            OrderBookType::from_str("simple"),
+            Ok(OrderBookType::Simple)
+        ));
+        assert!(matches!(
+            OrderBookType::from_str("concurrent"),
+            Ok(OrderBookType::Concurrent)
+        ));
+        assert!(matches!(
+            OrderBookType::from_str("lockfree"),
+            Ok(OrderBookType::LockFree)
+        ));
+        assert!(OrderBookType::from_str("invalid").is_err());
+    }
 
-        assert_eq!(orderbook.get_active_orders_count().await, 0);
-        assert_eq!(orderbook.get_current_price().await, None);
+    #[tokio::test]
+    async fn test_all_orderbook_implementations() {
+        let trading_pair = TradingPair::new("TEST", "USD");
+
+        // Test simple implementation.
+        let simple = create_orderbook(OrderBookType::Simple, trading_pair.clone());
+        assert_eq!(simple.get_active_orders_count().await, 0);
+
+        // Test concurrent implementation.
+        let concurrent = create_orderbook(OrderBookType::Concurrent, trading_pair.clone());
+        assert_eq!(concurrent.get_active_orders_count().await, 0);
+
+        // Test lockfree implementation.
+        let lockfree = create_orderbook(OrderBookType::LockFree, trading_pair);
+        assert_eq!(lockfree.get_active_orders_count().await, 0);
     }
 }

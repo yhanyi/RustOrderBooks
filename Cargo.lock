@@ -494,38 +494,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "clap 3.2.25",
- "criterion",
- "crossbeam-queue",
- "crossbeam-skiplist",
- "futures",
- "hyper 0.14.31",
- "metrics",
- "metrics-exporter-prometheus",
- "once_cell",
- "parking_lot 0.8.0",
- "paste",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "reqwest",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tower 0.4.13",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1943,6 +1911,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c74cae0a4cf6ccbbf5f359f08efdf8ee7e1dc532573bf0db71968cb56b1448c"
 dependencies = [
  "base64",
+]
+
+[[package]]
+name = "rustorderbooks"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "clap 3.2.25",
+ "criterion",
+ "crossbeam-queue",
+ "crossbeam-skiplist",
+ "futures",
+ "hyper 0.14.31",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "once_cell",
+ "parking_lot 0.8.0",
+ "paste",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tower 0.4.13",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
